@@ -1,180 +1,218 @@
-// Registradores simulados
-let registers = {
-    AX: 0,
-    BX: 0,
-    CX: 0,
-    DX: 0,
-    IP: 0
-};
+// comunicar com o backend Python do simulador
 
-// Memória simples (tamanho 32 posições)
-let memory = new Array(32).fill(0);
+// CONFIG (possivel troca de rotas se necessário) 
+const API_LOAD  = "/load";
+const API_RUN   = "/run";
+const API_STEP  = "/step";
+const API_RESET = "/reset";
+const API_DUMP  = "/dump";
 
-// Código carregado e linha atual
-let program = [];
-let currentLine = 0;
 
-// ELEMENTOS DA INTERFACE
-const editor = document.getElementById("editor");
-const consoleBox = document.getElementById("console");
+// ELEMENTOS DA UI 
+const editor       = document.getElementById("editor");
+const consoleBox   = document.getElementById("console");
 const registersDiv = document.getElementById("registers");
-const memoryDiv = document.getElementById("memory");
+const memoryDiv    = document.getElementById("memory");
 
-// BOTÕES
-document.getElementById("loadBtn").onclick = loadProgram;
-document.getElementById("runBtn").onclick = runProgram;
-document.getElementById("stepBtn").onclick = stepProgram;
-document.getElementById("resetBtn").onclick = resetProgram;
-document.getElementById("dumpBtn").onclick = dumpMemory;
+const loadBtn  = document.getElementById("loadBtn");
+const runBtn   = document.getElementById("runBtn");
+const stepBtn  = document.getElementById("stepBtn");
+const resetBtn = document.getElementById("resetBtn");
+const dumpBtn  = document.getElementById("dumpBtn");
 
-// -------------------------------------------
-// FUNÇÃO → Atualiza console
-// -------------------------------------------
-function logToConsole(msg) {
-    consoleBox.innerHTML += "<br> " + msg;
+// Estado local mínimo para UI
+let running = false;
+
+// -------------------- helpers --------------------
+function appendConsole(text, kind = "info") {
+    // kind: info | error | log
+    const p = document.createElement("p");
+    p.textContent = text;
+    p.className = `console-${kind}`;
+    consoleBox.appendChild(p);
     consoleBox.scrollTop = consoleBox.scrollHeight;
 }
 
-// -------------------------------------------
-// FUNÇÃO → Atualiza painel de registradores
-// -------------------------------------------
-function updateRegisters() {
-    registersDiv.innerHTML = `
-        AX: ${registers.AX}<br>
-        BX: ${registers.BX}<br>
-        CX: ${registers.CX}<br>
-        DX: ${registers.DX}<br>
-        IP: ${registers.IP}
-    `;
+function clearConsole() {
+    consoleBox.innerHTML = "";
 }
 
-// -------------------------------------------
-// FUNÇÃO → Atualiza painel da memória
-// -------------------------------------------
-function updateMemory() {
-    memoryDiv.innerHTML = memory
-        .map((v, i) => `[${i}] → ${v}`)
-        .join("<br>");
+function setButtonsEnabled(enabled) {
+    loadBtn.disabled  = !enabled;
+    runBtn.disabled   = !enabled;
+    stepBtn.disabled  = !enabled;
+    resetBtn.disabled = !enabled;
+    dumpBtn.disabled  = !enabled;
 }
 
-// -------------------------------------------
-// CARREGAR PROGRAMA
-// -------------------------------------------
-function loadProgram() {
-    program = editor.value.split("\n").map(l => l.trim());
-    currentLine = 0;
-    registers.IP = 0;
-
-    consoleBox.innerHTML = "> Programa carregado.";
-    updateRegisters();
-    updateMemory();
-}
-
-// -------------------------------------------
-// EXECUTAR PROGRAMA INTEIRO
-// -------------------------------------------
-function runProgram() {
-    consoleBox.innerHTML = "> Executando programa...";
-
-    while (currentLine < program.length) {
-        executeLine(program[currentLine]);
-        currentLine++;
-        registers.IP = currentLine;
-    }
-
-    logToConsole("Execução finalizada.");
-    updateRegisters();
-    updateMemory();
-}
-
-// -------------------------------------------
-// EXECUTAR 1 LINHA (STEP)
-// -------------------------------------------
-function stepProgram() {
-    if (currentLine >= program.length) {
-        logToConsole("Fim do programa.");
-        return;
-    }
-
-    const line = program[currentLine];
-    logToConsole(`Executando: ${line}`);
-
-    executeLine(line);
-
-    currentLine++;
-    registers.IP = currentLine;
-
-    updateRegisters();
-    updateMemory();
-}
-
-// -------------------------------------------
-// RESETAR SIMULADOR
-// -------------------------------------------
-function resetProgram() {
-    registers = { AX: 0, BX: 0, CX: 0, DX: 0, IP: 0 };
-    memory.fill(0);
-    currentLine = 0;
-
-    consoleBox.innerHTML = "> Simulador resetado.";
-    updateRegisters();
-    updateMemory();
-}
-
-// -------------------------------------------
-// DUMP DA MEMÓRIA (MOSTRAR NO CONSOLE)
-// -------------------------------------------
-function dumpMemory() {
-    consoleBox.innerHTML += "<br><br><b>Dump da Memória:</b><br>";
-    memory.forEach((v, i) => {
-        consoleBox.innerHTML += `[${i}] → ${v}<br>`;
-    });
-}
-
-// -------------------------------------------
-// INTERPRETAR UMA LINHA (LINGUAGEM SIMPLIFICADA)
-// -------------------------------------------
-function executeLine(line) {
-    if (!line || line.startsWith(";")) return;
-
-    const parts = line.split(" ");
-    const instr = parts[0].toUpperCase();
-
-    switch (instr) {
-
-        case "MOV":
-            // MOV AX, 10
-            let [reg, value] = parts[1].split(",");
-            reg = reg.trim().toUpperCase();
-            value = parseInt(value.trim());
-            registers[reg] = value;
-            break;
-
-        case "ADD":
-            // ADD AX, 5
-            let [r1, v1] = parts[1].split(",");
-            r1 = r1.trim().toUpperCase();
-            v1 = parseInt(v1.trim());
-            registers[r1] += v1;
-            break;
-
-        case "STORE":
-            // STORE AX, 5
-            let [r2, pos] = parts[1].split(",");
-            r2 = r2.trim().toUpperCase();
-            pos = parseInt(pos.trim());
-            memory[pos] = registers[r2];
-            break;
-
-        case "LOAD":
-            // LOAD BX, 2
-            let [r3, pos2] = parts[1].split(",");
-            r3 = r3.trim().toUpperCase();
-            pos2 = parseInt(pos2.trim());
-            registers[r3] = memory[pos2];
-            break;
-
-        default:
-            logToConsole("Instrução desconhecida: " + instr);
+// Generic POST helper
+async function apiPost(path, body = {}) {
+    try {
+        const res = await fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`HTTP ${res.status} - ${txt}`);
+        }
+        return await res.json();
+    } catch (err) {
+        // bubble error up
+        throw err;
     }
 }
+
+// Transformar memória retornada (bytes) em linhas para exibir
+function formatMemoryView(memoryArray, opts = {}) {
+    // memoryArray: array of bytes (0..255) OR array of words (0..65535)
+    // opts.words: boolean para interpretar como words (cada índice é uma palavra)
+    const lines = [];
+    const maxLines = opts.maxLines || 256;
+
+    if (!Array.isArray(memoryArray)) return ["<sem memória>"];
+
+    if (opts.words) {
+        for (let i = 0; i < Math.min(memoryArray.length, maxLines); i++) {
+            lines.push(`[${i}] → ${memoryArray[i]}`);
+        }
+    } else {
+        // Mostrar como bytes agrupados em palavras (duas em little-endian)
+        const showWords = opts.wordGroup ?? true;
+        if (!showWords) {
+            for (let i = 0; i < Math.min(memoryArray.length, maxLines); i++) {
+                lines.push(`[${i}] → ${memoryArray[i]}`);
+            }
+        } else {
+            // agrupa por 2 bytes (little-endian) para exibir palavras
+            const wordCount = Math.floor(memoryArray.length / 2);
+            for (let i = 0; i < Math.min(wordCount, maxLines); i++) {
+                const low = memoryArray[i * 2];
+                const high = memoryArray[i * 2 + 1];
+                const word = (high << 8) | low;
+                lines.push(`[${i}] → ${word}`);
+            }
+        }
+    }
+
+    return lines;
+}
+
+// Recebe o 'state' retornado pelo servidor e atualiza a UI
+function updateUI(state) {
+    if (!state) return;
+
+    // REGISTRADORES
+    if (state.registers) {
+        // mostra cada chave em ordem se possível
+        const keys = Object.keys(state.registers);
+        registersDiv.innerHTML = keys.map(k => `${k}: ${state.registers[k]}`).join("<br>");
+    }
+
+    // FLAGS + IP
+    if (state.flags || typeof state.ip !== "undefined") {
+        const fl = state.flags ? Object.entries(state.flags).map(([k,v]) => `${k}:${v}`).join(" ") : "";
+        const ip  = (typeof state.ip !== "undefined") ? `IP: ${state.ip}` : "";
+        // adiciona abaixo dos registradores (ou mistura se preferir)
+        registersDiv.innerHTML += `<br>${ip} ${fl}`;
+    }
+
+    // MEMÓRIA
+    if (state.memory) {
+        // Detecta se memory veio como array de bytes
+        // Mostramos default como palavras (2 bytes) para ficar parecido com sua interface original
+        const memLines = formatMemoryView(state.memory, { wordGroup: true, maxLines: 128 });
+        memoryDiv.innerHTML = memLines.join("<br>");
+    }
+}
+
+// ações
+async function loadProgram() {
+    clearConsole();
+    appendConsole("Enviando programa para o servidor...");
+    try {
+        const code = editor.value;
+        const res = await apiPost(API_LOAD, { code });
+        if (res.message) appendConsole(res.message);
+        if (res.state) {
+            updateUI(res.state);
+            appendConsole("Programa carregado no backend.");
+        } else {
+            appendConsole("Programa carregado (sem estado retornado).");
+        }
+    } catch (err) {
+        appendConsole("Erro ao carregar: " + err, "error");
+    }
+}
+
+async function runProgram() {
+    clearConsole();
+    appendConsole("Executando programa (servidor)...");
+    setButtonsEnabled(false);
+    running = true;
+    try {
+        const res = await apiPost(API_RUN, {});
+        // espera obter logs + state
+        if (res.logs && Array.isArray(res.logs)) {
+            res.logs.forEach(l => appendConsole(l));
+        }
+        if (res.state) updateUI(res.state);
+        appendConsole("Execução finalizada.");
+    } catch (err) {
+        appendConsole("Erro ao executar: " + err, "error");
+    } finally {
+        running = false;
+        setButtonsEnabled(true);
+    }
+}
+
+async function stepProgram() {
+    try {
+        const res = await apiPost(API_STEP, {});
+        if (res.logs && Array.isArray(res.logs)) res.logs.forEach(l => appendConsole(l));
+        if (res.state) updateUI(res.state);
+    } catch (err) {
+        appendConsole("Erro no step: " + err, "error");
+    }
+}
+
+async function resetProgram() {
+    clearConsole();
+    appendConsole("Solicitando reset ao servidor...");
+    try {
+        const res = await apiPost(API_RESET, {});
+        if (res.message) appendConsole(res.message);
+        if (res.state) updateUI(res.state);
+    } catch (err) {
+        appendConsole("Erro ao resetar: " + err, "error");
+    }
+}
+
+async function dumpMemory() {
+    appendConsole("Solicitando dump de memória...");
+    try {
+        const res = await apiPost(API_DUMP, {});
+        if (res.message) appendConsole(res.message);
+        if (res.memory && Array.isArray(res.memory)) {
+            // mostra primeiro 128 words (ou 256 bytes)
+            const lines = formatMemoryView(res.memory, { wordGroup: true, maxLines: 256 });
+            lines.forEach(l => appendConsole(l));
+        } else {
+            appendConsole("Resposta de dump sem memória.");
+        }
+    } catch (err) {
+        appendConsole("Erro ao pedir dump: " + err, "error");
+    }
+}
+
+// ligações
+loadBtn.onclick  = () => loadProgram();
+runBtn.onclick   = () => runProgram();
+stepBtn.onclick  = () => stepProgram();
+resetBtn.onclick = () => resetProgram();
+dumpBtn.onclick  = () => dumpMemory();
+
+// Inicializa UI com estado vazio
+registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0";
+memoryDiv.innerHTML = Array.from({length:32}).map((_,i) => `[${i}] → 0`).join("<br>");
