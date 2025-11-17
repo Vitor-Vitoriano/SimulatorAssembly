@@ -451,5 +451,16 @@ class Simulator:
             raise NotImplementedError(f"Instrução '{opcode}' desconhecida ou não implementada.")
 
 
+    def step(self):
+        ip = self.cpu._registers['ip']
+
+        if ip >= len(self.program):
+            self.halted = True
+            return "END"
+
+        opcode, operands = self.program[ip]
+        self.execute_instruction(opcode, operands)
+        self.cpu._registers['ip'] += 1
+        return f"{opcode} " + ", ".join(operands)
 
 
