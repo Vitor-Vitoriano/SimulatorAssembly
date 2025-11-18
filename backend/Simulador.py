@@ -79,6 +79,25 @@ class CPU:
         # print(f"Flags atualizados ({bits}-bit): ZF={self.flags['ZF']}, SF={self.flags['SF']}")
 
     def dump(self):
+        """Exibe o estado atual dos registradores 16-bit como um dicionário"""
+        register_state = {
+            'ax': self._registers['ax'],
+            'bx': self._registers['bx'],
+            'cx': self._registers['cx'],
+            'dx': self._registers['dx'],
+            'si': self._registers['si'],
+            'di': self._registers['di'],
+            'bp': self._registers['bp'],
+            'sp': self._registers['sp'],
+            'ip': self._registers['ip']
+        }
+        
+        # Junta os registradores e as flags
+        return {
+            "registers": register_state,
+            "flags": self.flags
+        }
+    def dump_print(self):
         """Exibe o estado atual dos registradores 16-bit"""
         print("--- CPU (16-bit) ---")
         regs1 = f"AX: {self.get_reg('ax'):<5} BX: {self.get_reg('bx'):<5} CX: {self.get_reg('cx'):<5} DX: {self.get_reg('dx'):<5}"
