@@ -44,14 +44,15 @@ def run_program():
 def step():
    
     try:
+        vm.output_log = ''
         vm.step()
+        
 
         return jsonify({
             "instruction": vm.output_log,
             "registers": vm.cpu.dump(),
             "output": "step executado",
         })
-
     except Exception as e:
         return jsonify({"error": f"erro na instrução:{vm.output_log}"+str(e)}), 500
 
