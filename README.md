@@ -11,6 +11,21 @@ Simulador interativo desenvolvido para auxiliar estudantes a entender, visualiza
 * **Kalil Nóbrega** — [GitHub](link-do-github-do-kalil) • [LinkedIn](link-do-linkedin-do-kalil)
 
 ---
+🔧 Funcionalidades do Simulador
+Execução passo a passo de instruções Assembly
+
+Visualização de registradores
+
+Exibição da memória
+ 
+Interface estilizada com TailwindCSS
+
+Entrada e edição interativa de código Assembly
+
+Painel de execução e depuração
+
+---
+
 
 ## 1. ⚙️ Instruções e Configuração
 
