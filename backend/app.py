@@ -16,8 +16,12 @@ def load_program():
 
         if not code.strip():
             return jsonify({"error": "Nenhum código recebido"}), 400
+        
+        segments = data.get("segments", {
+            "cs": 0, "ds": 0, "ss": 0, "es": 0
+        })
 
-        vm.load_program_from_text(code)
+        vm.load_program_from_text(code, initial_segments=segments)
 
         return jsonify({"output": "programa carregado"})
 
@@ -29,7 +33,9 @@ def load_program():
 def run_program():
     
     try:
+        vm.output_log = ''
         vm.run()
+
         return jsonify({
             "instructions": vm.output_log,
             "registers": vm.cpu.dump(),
@@ -44,14 +50,14 @@ def run_program():
 def step():
    
     try:
+        vm.output_log = ''
         vm.step()
-
+        
         return jsonify({
             "instruction": vm.output_log,
             "registers": vm.cpu.dump(),
-            "output": "step executado",
+            "output": "step executado"
         })
-
     except Exception as e:
         return jsonify({"error": f"erro na instrução:{vm.output_log}"+str(e)}), 500
 

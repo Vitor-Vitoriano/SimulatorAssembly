@@ -205,7 +205,7 @@ class Simulator:
             except ValueError: raise ValueError(f"Destino '{operand}' inválido")
 
     def log_print(self, message):
-        self.output_log += str(message) + "\n"
+        self.output_log += str(message)
 
     def load_program_from_text(self, assembly_code_text):
         """
@@ -497,7 +497,7 @@ class Simulator:
         
         try:
             self.execute_instruction(opcode, operands)
-            self.log_print(f"\n[IP={ip}] Executando: {opcode} {', '.join(operands)}")
+            self.log_print(f"[IP={ip}] Executando: {opcode} {', '.join(operands)}")
         except Exception as e:
             return "Erro ao executar: {e}"
 
