@@ -12,6 +12,7 @@ class CPU:
         self._registers = {
             'ax': 0, 'bx': 0, 'cx': 0, 'dx': 0,
             'si': 0, 'di': 0, 'bp': 0, 'sp': 0, 'ip': 0,
+            'cs': 0x0000, 'ds': 0x0000, 'ss': 0x0000, 'es': 0x0000
         }
         # Flags de status
         self.flags = {
@@ -89,7 +90,11 @@ class CPU:
             'di': self._registers['di'],
             'bp': self._registers['bp'],
             'sp': self._registers['sp'],
-            'ip': self._registers['ip']
+            'ip': self._registers['ip'],
+            'cs': self._registers['cs'],
+            'ds': self._registers['ds'],
+            'ss': self._registers['ss'],
+            'es': self._registers['es']
         }
         
         # Junta os registradores e as flags
@@ -123,7 +128,7 @@ class Simulator:
     def __init__(self, memory_size=65536): # 64k de BYTES
         self.cpu = CPU()
         self.memory = bytearray(memory_size) # Memória byte-addressable
-        self.program = []
+        self.program = {}
         self.labels = {}  # Dicionário para guardar rótulos (Labels)
         self.output_log = ""
 
@@ -135,10 +140,33 @@ class Simulator:
         """Checa se um nome de registrador é 8-bit"""
         return reg_name.lower() in ('al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh')
 
-    def _read_memory(self, address, bits=16):
+    def _get_instruction_size(self, operands):
+     
+        size = 2  # (Opcode)
+        size += len(operands) * 2 # Cada operando adiciona 2 bytes
+        return size
+
+    def get_physical_address(self, segment_reg, offset):
+        """
+        Calcula Endereço Físico = (Segmento * 16) + Offset
+        """
+        seg_val = self.cpu.get_reg(segment_reg)
+        
+        # Garante 16-bit unsigned para o offset
+        offset = offset & 0xFFFF 
+        
+        physical_addr = (seg_val << 4) + offset
+        
+        if physical_addr >= len(self.memory):
+            # Em simulação simples, podemos fazer wrap-around ou dar erro
+            # Vamos fazer wrap-around (comportamento padrão x86)
+            physical_addr %= len(self.memory)
+            
+        return physical_addr
+    
+    def _read_memory(self, offset, bits=16, segment='ds'):
         """Lê 8 ou 16 bits da memória (Little-Endian)"""
-        if address < 0 or (address + (bits//8) - 1) >= len(self.memory):
-            raise MemoryError(f"Endereço de memória inválido: {address}")
+        address = self.get_physical_address(segment, offset)
             
         if bits == 8:
             return self.memory[address]
@@ -148,10 +176,9 @@ class Simulator:
         val_high = self.memory[address + 1]
         return (val_high << 8) | val_low
 
-    def _write_memory(self, address, value, bits=16):
+    def _write_memory(self, offset, value, bits=16, segment='ds'):
         """Escreve 8 ou 16 bits na memória (Little-Endian)"""
-        if address < 0 or (address + (bits//8) - 1) >= len(self.memory):
-            raise MemoryError(f"Endereço de memória inválido: {address}")
+        address = self.get_physical_address(segment, offset)
 
         if bits == 8:
             self.memory[address] = value & 0xFF
@@ -207,68 +234,91 @@ class Simulator:
     def log_print(self, message):
         self.output_log += str(message)
 
-    def load_program_from_text(self, assembly_code_text):
+    def load_program_from_text(self, assembly_code_text, initial_segments=None):
         """
         Carrega o programa. Faz uma "pré-compilação" em duas passagens
         para encontrar e registrar todos os rótulos (labels).
         """
-        self.program = []
+        self.program = {}
         self.labels = {}
+        self.output_log = ""
+        self.cpu.set_reg('ip', 0)
+        self.cpu.set_reg('cs', 0)
+
+        if initial_segments:
+            # Itera sobre o dicionário: {'cs': 0, 'ds': 10...}
+            for reg, val in initial_segments.items():
+                try:
+                    # Usa o set_reg da CPU (já converte string para int)
+                    self.cpu.set_reg(reg, int(val))
+                except Exception:
+                    pass
+        
+        self.cpu.set_reg('ip', 0)
+        cs = self.cpu.get_reg('cs')
+
         lines = assembly_code_text.strip().split('\n')
-        
-        current_address = 0
-        
-        # Passagem 1: Encontrar rótulos
+        current_offset = 0
+
+        # Passagem 1: Mapear Labels
+        temp_offset = 0
         for line in lines:
-            line = line.strip().split(';')[0].strip() # Limpa comentários e espaços
+            line = line.strip().split(';')[0].strip()
             if not line: continue
             
             if line.endswith(':'):
-                label_name = line[:-1].lower()
-                self.labels[label_name] = current_address
+                self.labels[line[:-1].lower()] = temp_offset
             else:
-                current_address += 1 # Só incrementa se for uma instrução real
+                # Calcula tamanho para saber onde fica o próximo label
+                parts = line.split(maxsplit=1)
+                ops = [x.strip() for x in parts[1].split(',')] if len(parts) > 1 else []
+                size = self._get_instruction_size(ops)
+                temp_offset += size
 
-        # Passagem 2: Armazenar instruções
+        # Passagem 2: Carregar Mapa
         for line in lines:
             line = line.strip().split(';')[0].strip()
-            
-            if not line or line.endswith(':'):
-                continue # Ignora linhas vazias ou que SÃO rótulos
-            
-            parts = line.split(maxsplit=1) # Ex: "MOV", "AX, 10"
+            if not line or line.endswith(':'): continue
+
+            parts = line.split(maxsplit=1)
             opcode = parts[0].upper()
-            operands = []
+            operands = [x.strip() for x in parts[1].split(',')] if len(parts) > 1 else []
             
-            if len(parts) > 1:
-                # Separa operandos limpando vírgulas e espaços
-                operands = [op.strip() for op in parts[1].split(',')]
+            size = self._get_instruction_size(operands)
             
-            self.program.append((opcode, operands))
+            # Armazena no mapa lógico (IP -> Instrução)
+            address = self.get_physical_address('cs', current_offset)
+            self.program[address] = (opcode, operands, size)
+            current_offset += size
 
     def run(self):
         """Executa o programa carregado"""
         self.cpu.set_reg('ip', 0)
+
+        max_instructions = 1000
+        count = 0
         
-        while self.cpu.get_reg('ip') < len(self.program):
-            current_ip = self.cpu.get_reg('ip')
+        while count < max_instructions:
+            ip = self.cpu.get_reg('ip')
+            cs = self.cpu.get_reg('cs')
+            address = self.get_physical_address('cs', ip)
+
+            if address not in self.program:
+                break
             
+            opcode, operands, size = self.program[address]
+                
+            self.cpu.set_reg('ip', ip + size)           
+            self.cpu.dump()
+
             try:
-                opcode, operands = self.program[current_ip]
-                
-                # Avança o IP para a PRÓXIMA instrução *antes* de executar.
-                # Crucial para JMP/CALL poderem sobrescrevê-lo.
-                self.cpu.set_reg('ip', current_ip + 1)
-                
-                
-                self.log_print(f"\n[IP={current_ip}] Executando: {opcode} {', '.join(operands)}")
+                self.log_print(f"[IP={ip:04X}] Executando: {opcode} {', '.join(operands)}\n")
                 self.execute_instruction(opcode, operands)
-                
-                self.cpu.dump()
-                
             except Exception as e:
-                print(f"ERRO FATAL [IP={current_ip}] ao executar {opcode} {operands}: {e}", file=sys.stderr)
-                self.cpu.set_reg('ip', len(self.program)) # Para a execução
+                self.log_print(f"Erro Fatal: {e}")
+                break
+            
+            count += 1    
 
     def execute_instruction(self, opcode, operands):
         """Decodificador e executor de instruções (COMPLETO)"""
@@ -469,10 +519,8 @@ class Simulator:
         elif opcode == 'IN':
             dest, port = operands[0], operands[1]
             # Simulação: Pede input do usuário
-            try:
-                val = int(input(f"Simulador (IN): Digite um valor para a porta {port}: "))
-            except ValueError:
-                val = 0
+            val = 0 # Valor simulado para não travar
+            self.log_print(f"[IN] Lendo porta {port} -> {val}\n")
             self._set_operand_value(dest, val)
 
         elif opcode == 'OUT':
@@ -486,20 +534,26 @@ class Simulator:
 
 
     def step(self):
-        ip = self.cpu._registers['ip']
+        ip = self.cpu.get_reg('ip')
+        cs = self.cpu.get_reg('cs')
 
-        if ip >= len(self.program):
-            self.halted = True
+        address = self.get_physical_address('cs', ip)
+
+        if address not in self.program:
             return "END"
 
-        opcode, operands = self.program[ip]
-        self.cpu.set_reg('ip', ip + 1)
+        opcode, operands, size = self.program[address]
+
+        self.cpu.set_reg('ip', ip + size)
+
+        opcode, operands, size = self.program[address]
+        self.cpu.set_reg('ip', ip + size)
         
         try:
+            self.log_print(f"[Endereço IP={ip:04X}] Executando: {opcode} {', '.join(operands)}")
             self.execute_instruction(opcode, operands)
-            self.log_print(f"[IP={ip}] Executando: {opcode} {', '.join(operands)}")
         except Exception as e:
-            return "Erro ao executar: {e}"
+            return f"Erro ao executar: {e}"
 
         return "OK"
 
@@ -510,7 +564,7 @@ class Simulator:
 
         self.halted = False
         self.labels = {}           
-        self.program = []        
+        self.program = {}       
 
         return "RESET_OK"
 
