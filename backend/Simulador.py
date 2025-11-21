@@ -125,7 +125,7 @@ class CPU:
 class Simulator:
     """O Simulador principal com todas as instruções do A3."""
     
-    def __init__(self, memory_size=65536): # 64k de BYTES
+    def __init__(self, memory_size=1048576): # 1MB d
         self.cpu = CPU()
         self.memory = bytearray(memory_size) # Memória byte-addressable
         self.program = {}
@@ -239,11 +239,7 @@ class Simulator:
         Carrega o programa. Faz uma "pré-compilação" em duas passagens
         para encontrar e registrar todos os rótulos (labels).
         """
-        self.program = {}
-        self.labels = {}
-        self.output_log = ""
-        self.cpu.set_reg('ip', 0)
-        self.cpu.set_reg('cs', 0)
+        self.cpu.reset()
 
         if initial_segments:
             # Itera sobre o dicionário: {'cs': 0, 'ds': 10...}
@@ -545,12 +541,9 @@ class Simulator:
         opcode, operands, size = self.program[address]
 
         self.cpu.set_reg('ip', ip + size)
-
-        opcode, operands, size = self.program[address]
-        self.cpu.set_reg('ip', ip + size)
         
         try:
-            self.log_print(f"[Endereço IP={ip:04X}] Executando: {opcode} {', '.join(operands)}")
+            self.log_print(f"[ADDR: {address:05X} | CS:IP {cs:04X}:{ip:04X}] Executando: {opcode} {', '.join(operands)}")
             self.execute_instruction(opcode, operands)
         except Exception as e:
             return f"Erro ao executar: {e}"
@@ -564,7 +557,8 @@ class Simulator:
 
         self.halted = False
         self.labels = {}           
-        self.program = {}       
+        self.program = {}    
+        self.output_log = ""   
 
         return "RESET_OK"
 
