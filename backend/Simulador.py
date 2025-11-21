@@ -260,7 +260,8 @@ class Simulator:
                 # Crucial para JMP/CALL poderem sobrescrevê-lo.
                 self.cpu.set_reg('ip', current_ip + 1)
                 
-                print(f"\n[IP={current_ip}] Executando: {opcode} {', '.join(operands)}")
+                
+                self.log_print(f"\n[IP={current_ip}] Executando: {opcode} {', '.join(operands)}")
                 self.execute_instruction(opcode, operands)
                 
                 self.cpu.dump()
@@ -492,9 +493,15 @@ class Simulator:
             return "END"
 
         opcode, operands = self.program[ip]
-        self.execute_instruction(opcode, operands)
-        self.cpu._registers['ip'] += 1
-        return f"{opcode} " + ", ".join(operands)
+        self.cpu.set_reg('ip', ip + 1)
+        
+        try:
+            self.execute_instruction(opcode, operands)
+            self.log_print(f"\n[IP={ip}] Executando: {opcode} {', '.join(operands)}")
+        except Exception as e:
+            return "Erro ao executar: {e}"
+
+        return "OK"
 
     def reset(self):
 
