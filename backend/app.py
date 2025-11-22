@@ -18,7 +18,9 @@ def load_program():
             return jsonify({"error": "Nenhum código recebido"}), 400
         
         segments = data.get("segments", {
+            seletores-e-ip
             "cs": 0x0000, "ds": 0x0000, "ss": 0x0000, "es": 0x0000
+
         })
 
         vm.load_program_from_text(code, initial_segments=segments)
