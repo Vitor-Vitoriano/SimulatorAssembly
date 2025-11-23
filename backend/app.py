@@ -18,17 +18,22 @@ def load_program():
             return jsonify({"error": "Nenhum código recebido"}), 400
         
         segments = data.get("segments", {
-            seletores-e-ip
             "cs": 0x0000, "ds": 0x0000, "ss": 0x0000, "es": 0x0000
-
         })
 
         vm.load_program_from_text(code, initial_segments=segments)
 
-        return jsonify({"output": "programa carregado"})
+        vm.output_log = "programa carregado"
+
+        return jsonify(vm.get_state_json())
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao executar. Detalhe: {str(e)}",
+            "detail": type(e).__name__,
+            }), 500
     
 
 @app.route("/run", methods=["POST"])
@@ -38,14 +43,14 @@ def run_program():
         vm.output_log = ''
         vm.run()
 
-        return jsonify({
-            "instructions": vm.output_log,
-            "registers": vm.cpu.dump(),
-            "output": "programa executado"        
-        })
+        return jsonify(vm.get_state_json())
 
     except Exception as e:
-        return jsonify({"error": f"erro na instrução:{vm.output_log}"+str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao executar. Detalhe: {str(e)}",
+            "detail": type(e).__name__,
+            }), 500
     
 
 @app.route("/step", methods=["POST"])
@@ -55,38 +60,37 @@ def step():
         vm.output_log = ''
         vm.step()
         
-        return jsonify({
-            "instruction": vm.output_log,
-            "registers": vm.cpu.dump(),
-            "output": "step executado"
-        })
+        return jsonify(vm.get_state_json())
+    
     except Exception as e:
-        return jsonify({"error": f"erro na instrução:{vm.output_log}"+str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao executar. Detalhe: {str(e)}",
+            "detail": type(e).__name__,
+            }), 500
 
 
 @app.route("/reset", methods=["POST"])
 def reset_program():
 
     global vm
-    vm = Simulator()  
+    vm = Simulator() 
 
-    return jsonify({
-        "registers": vm.cpu.dump(),
-        "output": "reset",
-        })
+    return jsonify(vm.get_state_json())
 
 
 @app.route("/dump", methods=["GET"])
 def dump_program():
 
     try:
-        return jsonify({
-            "registers": vm.cpu.dump(),
-            "output": "dump realizado",
-        })
+        return jsonify(vm.get_state_json())
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao executar. Detalhe: {str(e)}",
+            "detail": type(e).__name__,
+            }), 500
 
 
 if __name__ == "__main__":

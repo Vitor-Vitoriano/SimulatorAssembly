@@ -102,15 +102,6 @@ class CPU:
             "registers": register_state,
             "flags": self.flags
         }
-    
-    def dump_print(self):
-        """Exibe o estado atual dos registradores 16-bit"""
-        print("--- CPU (16-bit) ---")
-        regs1 = f"AX: {self.get_reg('ax'):<5} BX: {self.get_reg('bx'):<5} CX: {self.get_reg('cx'):<5} DX: {self.get_reg('dx'):<5}"
-        regs2 = f"SI: {self.get_reg('si'):<5} DI: {self.get_reg('di'):<5} BP: {self.get_reg('bp'):<5} SP: {self.get_reg('sp'):<5}"
-        regs3 = f"IP: {self.get_reg('ip'):<5} FLAGS [ZF:{self.flags['ZF']} SF:{self.flags['SF']} OF:{self.flags['OF']} CF:{self.flags['CF']}]"
-        print(regs1); print(regs2); print(regs3)
-        print("----------------------")
 
     def reset(self):
         for r in self._registers:
@@ -434,7 +425,7 @@ class Simulator:
             val1 = self._get_operand_value(src1, bits)
             val2 = self._get_operand_value(src2, bits)
             result = val1 - val2
-            print(f"CMP ({bits}-bit): {val1} - {val2} = {result}")
+            self.log_print(f"CMP ({bits}-bit): {val1} - {val2} = {result}")
             self.cpu.set_flags_arith(result, bits)
 
         elif opcode == 'JMP':
@@ -442,7 +433,7 @@ class Simulator:
             if dest_label not in self.labels:
                 raise ValueError(f"Rótulo de pulo '{dest_label}' não encontrado")
             self.cpu.set_reg('ip', self.labels[dest_label])
-            print(f"JMP para {dest_label} (IP={self.labels[dest_label]})")
+            self.log_print(f"JMP para {dest_label} (IP={self.labels[dest_label]})")
 
         # Jumps Condicionais
         elif opcode in ('JE', 'JNE', 'JG', 'JGE', 'JL', 'JLE'):
@@ -463,9 +454,9 @@ class Simulator:
                 dest_label = operands[0].lower()
                 target_ip = self.labels[dest_label]
                 self.cpu.set_reg('ip', target_ip)
-                print(f"{opcode}: Condição satisfeita. Pulando para {dest_label} (IP={target_ip})")
+                self.log_print(f"{opcode}: Condição satisfeita. Pulando para {dest_label} (IP={target_ip})")
             else:
-                print(f"{opcode}: Condição não satisfeita. Não pulando.")
+                self.log_print(f"{opcode}: Condição não satisfeita. Não pulando.")
         
         # --- Procedimentos e Loops ---
         elif opcode == 'CALL':
@@ -475,11 +466,11 @@ class Simulator:
             sp = self.cpu.get_reg('sp') - 2
             self.cpu.set_reg('sp', sp)
             self._write_memory(sp, ip, 16)
-            print(f"CALL: Salvando IP={ip} na pilha [{sp}]")
+            self.log_print(f"CALL: Salvando IP={ip} na pilha [{sp}]")
             # 2. JMP para o label
             target_ip = self.labels[dest_label]
             self.cpu.set_reg('ip', target_ip)
-            print(f"CALL: Pulando para {dest_label} (IP={target_ip})")
+            self.log_print(f"CALL: Pulando para {dest_label} (IP={target_ip})")
 
         elif opcode == 'RET':
             # 1. POP IP
@@ -488,7 +479,7 @@ class Simulator:
             self.cpu.set_reg('sp', sp + 2)
             # 2. JMP para o IP (restaurado)
             self.cpu.set_reg('ip', ip)
-            print(f"RET: Restaurando IP={ip} da pilha. Novo SP={self.cpu.get_reg('sp')}")
+            self.log_print(f"RET: Restaurando IP={ip} da pilha. Novo SP={self.cpu.get_reg('sp')}")
 
         elif opcode == 'IRET':
             # Simplificação: IRET faz o mesmo que RET
@@ -496,7 +487,7 @@ class Simulator:
             ip = self._read_memory(sp, 16)
             self.cpu.set_reg('sp', sp + 2)
             self.cpu.set_reg('ip', ip)
-            print("Aviso: IRET simulado como RET.")
+            self.log_print("Aviso: IRET simulado como RET.")
 
         elif opcode == 'LOOP':
             dest_label = operands[0].lower()
@@ -507,9 +498,9 @@ class Simulator:
             if cx != 0:
                 target_ip = self.labels[dest_label]
                 self.cpu.set_reg('ip', target_ip)
-                print(f"LOOP: CX={cx}, pulando para {dest_label} (IP={target_ip})")
+                self.log_print(f"LOOP: CX={cx}, pulando para {dest_label} (IP={target_ip})")
             else:
-                print(f"LOOP: CX={cx}, não pulando.")
+                self.log_print(f"LOOP: CX={cx}, não pulando.")
         
         # --- I/O ---
         elif opcode == 'IN':
@@ -523,7 +514,7 @@ class Simulator:
             port, src = operands[0], operands[1]
             val = self._get_operand_value(src)
             # Simulação: Printa no console
-            print(f"Simulador (OUT): Porta {port} recebeu valor {val}")
+            self.log_print(f"Simulador (OUT): Porta {port} recebeu valor {val}")
 
         else:
             raise NotImplementedError(f"Instrução '{opcode}' desconhecida ou não implementada.")
@@ -561,4 +552,12 @@ class Simulator:
         self.output_log = ""   
 
         return "RESET_OK"
+    
+    def get_state_json(self):
+
+        return {
+            "registers": self.cpu.dump(),
+            "memory": list(self.memory[:256]),
+            "output": self.output_log
+        }
 
