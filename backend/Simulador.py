@@ -555,9 +555,13 @@ class Simulator:
     
     def get_state_json(self):
 
+        dump = self.cpu.dump()
         return {
-            "registers": self.cpu.dump(),
-            "memory": list(self.memory[:256]),
-            "output": self.output_log
+            "state": {
+                "registers": dump['registers'],
+                "flags": dump['flags'],
+                "memory": list(self.memory[:256])
+            },
+            "logs": self.output_log.split('\n') if self.output_log else []
         }
 

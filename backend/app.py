@@ -13,13 +13,10 @@ def load_program():
     try:
         data = request.get_json()
         code = data.get("code", "")
+        segments = data.get("segments", {})
 
         if not code.strip():
             return jsonify({"error": "Nenhum código recebido"}), 400
-        
-        segments = data.get("segments", {
-            "cs": 0x0000, "ds": 0x0000, "ss": 0x0000, "es": 0x0000
-        })
 
         vm.load_program_from_text(code, initial_segments=segments)
 
@@ -79,7 +76,7 @@ def reset_program():
     return jsonify(vm.get_state_json())
 
 
-@app.route("/dump", methods=["GET"])
+@app.route("/dump", methods=["POST"])
 def dump_program():
 
     try:
