@@ -1,6 +1,7 @@
 // comunicar com o backend Python do simulador
 
 // CONFIG (possivel troca de rotas se necessário) 
+const API_URL = "http://127.0.0.1:5000";
 const API_LOAD  = "/load";
 const API_RUN   = "/run";
 const API_STEP  = "/step";
@@ -19,6 +20,12 @@ const runBtn   = document.getElementById("runBtn");
 const stepBtn  = document.getElementById("stepBtn");
 const resetBtn = document.getElementById("resetBtn");
 const dumpBtn  = document.getElementById("dumpBtn");
+
+// INPUTS DE SEGMENTO
+const inputCS = document.getElementById("seg-cs");
+const inputDS = document.getElementById("seg-ds");
+const inputSS = document.getElementById("seg-ss");
+const inputES = document.getElementById("seg-es");
 
 // Estado local mínimo para UI
 let running = false;
@@ -48,18 +55,22 @@ function setButtonsEnabled(enabled) {
 // Generic POST helper
 async function apiPost(path, body = {}) {
     try {
-        const res = await fetch(path, {
+        const res = await fetch(API_URL + path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
         });
+
+        const json = await res.json();
+
         if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(`HTTP ${res.status} - ${txt}`);
+            // Usa o objeto json já lido para pegar a mensagem de erro
+            throw new Error(json.message || json.error || `Erro HTTP ${res.status}`);
         }
-        return await res.json();
+        
+        // Retorna o objeto json já lido
+        return json;
     } catch (err) {
-        // bubble error up
         throw err;
     }
 }
@@ -133,7 +144,13 @@ async function loadProgram() {
     appendConsole("Enviando programa para o servidor...");
     try {
         const code = editor.value;
-        const res = await apiPost(API_LOAD, { code });
+        const segments = {
+            cs: inputCS.value || 0,
+            ds: inputDS.value || 0,
+            ss: inputSS.value || 0,
+            es: inputES.value || 0
+        };
+        const res = await apiPost(API_LOAD, { code, segments });
         if (res.message) appendConsole(res.message);
         if (res.state) {
             updateUI(res.state);
@@ -214,5 +231,5 @@ resetBtn.onclick = () => resetProgram();
 dumpBtn.onclick  = () => dumpMemory();
 
 // Inicializa UI com estado vazio
-registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0";
+registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0<br>CS: 0<br>DS: 0<br>SS: 0<br>ES: 0";
 memoryDiv.innerHTML = Array.from({length:32}).map((_,i) => `[${i}] → 0`).join("<br>");
