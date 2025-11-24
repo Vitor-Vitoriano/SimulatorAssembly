@@ -84,28 +84,28 @@ function formatMemoryView(memoryArray, opts = {}) {
 
     if (!Array.isArray(memoryArray)) return ["<sem memória>"];
 
-    if (opts.words) {
-        for (let i = 0; i < Math.min(memoryArray.length, maxLines); i++) {
-            lines.push(`[${i}] → ${memoryArray[i]}`);
+     // agrupa por 2 bytes (little-endian) para exibir palavras
+     const wordCount = Math.floor(memoryArray.length / 2);
+     for (let i = 0; i < Math.min(wordCount, maxLines); i++) {
+         const low = memoryArray[i * 2];
+         const high = memoryArray[i * 2 + 1];
+         const word = (high << 8) | low;
+         
+         // Formata HEX e DEC
+         const addrHex = (i * 2).toString(16).padStart(4, '0').toUpperCase();
+         const wordHex = word.toString(16).padStart(4, '0').toUpperCase();
+         const wordDec = word.toString(10);
+         
+         // Formato: [0000] → 000A (10)
+         // Usamos spans com cores para ficar igual aos registradores
+         lines.push(`
+             <span class="text-gray-500">[${addrHex}]</span> 
+             <span class="text-gray-400">→</span> 
+             <span class="text-white font-mono">${wordHex}</span>
+             <span class="text-gray-500 text-xs ml-1">(${wordDec})</span>
+         `);
         }
-    } else {
-        // Mostrar como bytes agrupados em palavras (duas em little-endian)
-        const showWords = opts.wordGroup ?? true;
-        if (!showWords) {
-            for (let i = 0; i < Math.min(memoryArray.length, maxLines); i++) {
-                lines.push(`[${i}] → ${memoryArray[i]}`);
-            }
-        } else {
-            // agrupa por 2 bytes (little-endian) para exibir palavras
-            const wordCount = Math.floor(memoryArray.length / 2);
-            for (let i = 0; i < Math.min(wordCount, maxLines); i++) {
-                const low = memoryArray[i * 2];
-                const high = memoryArray[i * 2 + 1];
-                const word = (high << 8) | low;
-                lines.push(`[${i}] → ${word}`);
-            }
-        }
-    }
+
 
     return lines;
 }
@@ -116,9 +116,34 @@ function updateUI(state) {
 
     // REGISTRADORES
     if (state.registers) {
-        // mostra cada chave em ordem se possível
-        const keys = Object.keys(state.registers);
-        registersDiv.innerHTML = keys.map(k => `${k}: ${state.registers[k]}`).join("<br>");
+
+        const order = [
+            'ax', 'bx', 'cx', 'dx', 
+            'ip','si', 'di', 'bp', 'sp', 
+            'cs', 'ds', 'ss', 'es',
+        ];
+        
+        let html = "";
+        
+        order.forEach(reg => {
+            // Verifica se o registrador existe no retorno do backend
+            if (state.registers[reg] !== undefined) {
+                // Formata para HEX (ex: 0000)
+                const val = state.registers[reg];
+                const valHex = val.toString(16).padStart(4, '0').toUpperCase();
+                const valDec = val.toString(10);
+                
+                html += `<div style="display: flex; align-items: center; padding: 2px 0; border-bottom: 1px solid #1f2937;">
+                            <span style="font-weight: bold; width: 10em; color: #a5b4fc;">${reg.toUpperCase()}:</span>
+                            <div style="text-align: center;">
+                                <span style="color: #e5e7eb;">${valHex}</span>
+                                <span style="color: #9ca3af; font-size: 1em; margin-left: 6px;">(${valDec})</span>
+                            </div>
+                         </div>`;
+            }
+        });
+
+        registersDiv.innerHTML = html;
     }
 
     // FLAGS + IP
@@ -231,5 +256,5 @@ resetBtn.onclick = () => resetProgram();
 dumpBtn.onclick  = () => dumpMemory();
 
 // Inicializa UI com estado vazio
-registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0<br>CS: 0<br>DS: 0<br>SS: 0<br>ES: 0";
+registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0<br>CS: 0<br>DS: 0<br>SS: 0<br>ES: 0<br>BP:65534<br>SP:65534";
 memoryDiv.innerHTML = Array.from({length:32}).map((_,i) => `[${i}] → 0`).join("<br>");

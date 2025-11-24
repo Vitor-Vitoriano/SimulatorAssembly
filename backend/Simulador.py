@@ -11,7 +11,7 @@ class CPU:
         # Dicionário interno para os registradores de 16-bit
         self._registers = {
             'ax': 0, 'bx': 0, 'cx': 0, 'dx': 0,
-            'si': 0, 'di': 0, 'bp': 0, 'sp': 0, 'ip': 0,
+            'si': 0, 'di': 0, 'bp': 0xFFFE, 'sp': 0xFFFE, 'ip': 0,
             'cs': 0x0000, 'ds': 0x0000, 'ss': 0x0000, 'es': 0x0000
         }
         # Flags de status
@@ -113,6 +113,9 @@ class CPU:
             "of": 0
         }
 
+        self._registers['sp'] = 0xFFFE
+        self._registers['bp'] = 0xFFFE
+
 class Simulator:
     """O Simulador principal com todas as instruções do A3."""
     
@@ -122,6 +125,7 @@ class Simulator:
         self.program = {}
         self.labels = {}  # Dicionário para guardar rótulos (Labels)
         self.output_log = ""
+        self.trace_hardware = False
 
         # Pilha começa no topo da memória
         self.cpu.set_reg('sp', 0xFFFE)
@@ -137,6 +141,11 @@ class Simulator:
         size += len(operands) * 2 # Cada operando adiciona 2 bytes
         return size
 
+    def log_hardware(self, system, msg):
+        """Registra eventos de baixo nível se o trace estiver ativo"""
+        if self.trace_hardware:
+            self.output_log += f"   [{system}] {msg}\n"
+
     def get_physical_address(self, segment_reg, offset):
         """
         Calcula Endereço Físico = (Segmento * 16) + Offset
@@ -147,6 +156,10 @@ class Simulator:
         offset = offset & 0xFFFF 
         
         physical_addr = (seg_val << 4) + offset
+
+        if self.trace_hardware:
+            calc_str = f"({segment_reg.upper()}:{seg_val:04X} * 16) + {offset:04X} = {physical_addr:05X}"
+            self.log_hardware("MMU", f"Calc Endereço: {calc_str}")
         
         if physical_addr >= len(self.memory):
             # Em simulação simples, podemos fazer wrap-around ou dar erro
@@ -158,24 +171,38 @@ class Simulator:
     def _read_memory(self, offset, bits=16, segment='ds'):
         """Lê 8 ou 16 bits da memória (Little-Endian)"""
         address = self.get_physical_address(segment, offset)
+
+        if self.trace_hardware:
+            self.log_hardware("BUS", f"Endereço {address:05X}h -> Barramento de Endereços")
+            self.log_hardware("BUS", f"Sinal de Controle: MEMR (Ler Memória)")
             
+        # 3. Leitura Real
         if bits == 8:
-            return self.memory[address]
-        
-        # Little-Endian: Baixo byte no endereço menor
-        val_low = self.memory[address]
-        val_high = self.memory[address + 1]
-        return (val_high << 8) | val_low
+            val = self.memory[address]
+        else:
+            val_low = self.memory[address]
+            val_high = self.memory[address + 1]
+            val = (val_high << 8) | val_low
+
+        # 4. Log do Barramento de Dados
+        if self.trace_hardware:
+            self.log_hardware("BUS", f"Dado {val:04X}h -> Barramento de Dados")
+
+        return val
 
     def _write_memory(self, offset, value, bits=16, segment='ds'):
         """Escreve 8 ou 16 bits na memória (Little-Endian)"""
         address = self.get_physical_address(segment, offset)
 
+        if self.trace_hardware:
+            self.log_hardware("BUS", f"Endereço {address:05X}h -> Barramento de Endereços")
+            self.log_hardware("BUS", f"Dado {value:04X}h -> Barramento de Dados")
+            self.log_hardware("BUS", f"Sinal de Controle: MEMW (Escrever Memória)")
+
+        # 3. Escrita Real
         if bits == 8:
             self.memory[address] = value & 0xFF
             return
-        
-        # Little-Endian: Baixo byte no endereço menor
         val_low = value & 0xFF
         val_high = (value >> 8) & 0xFF
         self.memory[address] = val_low
@@ -206,22 +233,24 @@ class Simulator:
         """
         Define o VALOR de um operando (DESTINO).
         """
-        operand = operand.lower()
+        operand = operand.lower().strip()
         
-        # Ponteiro de memória
+        # --- LÓGICA DE MEMÓRIA [xxx] ---
         if operand.startswith('[') and operand.endswith(']'):
-            address_str = operand[1:-1]
-            try: address = int(address_str, 0)
-            except ValueError: address = self.cpu.get_reg(address_str)
-            self._write_memory(address, value, bits_hint)
-            # (Opcional: print para debug)
-            # print(f"Memória[{address}] definida como {value} ({bits_hint}-bit)")
+            content = operand[1:-1].strip()
+            try: 
+                offset = int(content, 0)
+            except ValueError: 
+                offset = self.cpu.get_reg(content)
+                
+            self._write_memory(offset, value, bits_hint)
+            self.log_print(f"   [MEM] Escreveu {value:04X}h em DS:{offset:04X}h\n")
             
-        # Registrador
+        # --- LÓGICA DE REGISTRADOR ---
         else:
             try: self.cpu.set_reg(operand, value)
             except ValueError: raise ValueError(f"Destino '{operand}' inválido")
-
+            
     def log_print(self, message):
         self.output_log += str(message)
 
@@ -284,6 +313,7 @@ class Simulator:
 
         max_instructions = 1000
         count = 0
+        self.trace_hardware = True
         
         while count < max_instructions:
             ip = self.cpu.get_reg('ip')
@@ -521,6 +551,7 @@ class Simulator:
 
 
     def step(self):
+        self.trace_hardware = True
         ip = self.cpu.get_reg('ip')
         cs = self.cpu.get_reg('cs')
 
@@ -556,11 +587,22 @@ class Simulator:
     def get_state_json(self):
 
         dump = self.cpu.dump()
+        ds_val = self.cpu.get_reg('ds')
+        start_phys = ds_val << 4
+        
+        # Pega uma fatia de 256 bytes a partir do início do DS
+        end_phys = min(start_phys + 256, len(self.memory))
+        mem_view = list(self.memory[start_phys : end_phys])
+        
+        # Se a fatia for menor que 256 (fim da RAM), preenche com zeros para não quebrar UI
+        if len(mem_view) < 256:
+            mem_view += [0] * (256 - len(mem_view))
+
         return {
             "state": {
                 "registers": dump['registers'],
                 "flags": dump['flags'],
-                "memory": list(self.memory[:256])
+                "memory": mem_view
             },
             "logs": self.output_log.split('\n') if self.output_log else []
         }
