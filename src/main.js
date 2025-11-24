@@ -256,5 +256,7 @@ resetBtn.onclick = () => resetProgram();
 dumpBtn.onclick  = () => dumpMemory();
 
 // Inicializa UI com estado vazio
+
 registersDiv.innerHTML = "AX: 0<br>BX: 0<br>CX: 0<br>DX: 0<br>IP: 0<br>CS: 0<br>DS: 0<br>SS: 0<br>ES: 0<br>BP:65534<br>SP:65534";
+master
 memoryDiv.innerHTML = Array.from({length:32}).map((_,i) => `[${i}] → 0`).join("<br>");

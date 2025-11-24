@@ -587,6 +587,7 @@ class Simulator:
     def get_state_json(self):
 
         dump = self.cpu.dump()
+
         ds_val = self.cpu.get_reg('ds')
         start_phys = ds_val << 4
         
@@ -598,11 +599,14 @@ class Simulator:
         if len(mem_view) < 256:
             mem_view += [0] * (256 - len(mem_view))
 
+
         return {
             "state": {
                 "registers": dump['registers'],
                 "flags": dump['flags'],
+
                 "memory": mem_view
+
             },
             "logs": self.output_log.split('\n') if self.output_log else []
         }
