@@ -1,13 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from Simulador import Simulator
-from vercel_wsgi import make_lambda_handler
 
 app = Flask(__name__)
 CORS(app)
 
 vm = Simulator()
-
 
 @app.route("/load", methods=["POST"])
 def load_program():
@@ -91,7 +89,6 @@ def dump_program():
             "detail": type(e).__name__,
             }), 500
 
-handler = make_lambda_handler(app)
 
 if __name__ == "__main__":
     app.run(debug=True,port=5000)
