@@ -1,38 +1,15 @@
 {
-    "builds": [
-      {
-        "src": "backend/app.py",
-        "use": "@vercel/python"
-      },
-      {
-        "src": "index.html",
-        "use": "@vercel/static"
-      },
-      {
-        "src": "src/**",
-        "use": "@vercel/static"
+    "buildCommand": "npm install && npm run build",
+    "outputDirectory": "dist",
+    "functions": {
+      "api/app.py": {
+        "runtime": "python3.12"
       }
-    ],
+    },
     "routes": [
       {
-        "src": "/load",
-        "dest": "backend/app.py"
-      },
-      {
-        "src": "/run",
-        "dest": "backend/app.py"
-      },
-      {
-        "src": "/step",
-        "dest": "backend/app.py"
-      },
-      {
-        "src": "/reset",
-        "dest": "backend/app.py"
-      },
-      {
-        "src": "/dump",
-        "dest": "backend/app.py"
+        "src": "/(load|run|step|reset|dump)",
+        "dest": "/api/app.py"
       },
       {
         "src": "/(.*)",
@@ -40,3 +17,4 @@
       }
     ]
   }
+  
