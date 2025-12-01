@@ -170,10 +170,10 @@ async function loadProgram() {
     try {
         const code = editor.value;
         const segments = {
-            cs: inputCS.value || 0,
-            ds: inputDS.value || 0,
-            ss: inputSS.value || 0,
-            es: inputES.value || 0
+            cs: parseInt(inputCS.value || 0, 16),
+            ds: parseInt(inputDS.value || 0, 16), 
+            ss: parseInt(inputSS.value || 0, 16), 
+            es: parseInt(inputES.value || 0, 16)  
         };
         const res = await apiPost(API_LOAD, { code, segments });
         if (res.message) appendConsole(res.message);
