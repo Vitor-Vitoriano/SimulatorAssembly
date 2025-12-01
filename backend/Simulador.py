@@ -231,7 +231,7 @@ class Simulator:
         memlen = len(self.memory)
 
         if self.trace_hardware:
-            self.log_hardware("BUS", f"Endereço {address:05X}h -> Barramento de Endereços")
+            self.log_hardware("BUS", f"Endereço [0x{address:05X}] -> Barramento de Endereços")
             self.log_hardware("BUS", f"Sinal de Controle: MEMR (Ler Memória)")
 
         if bits == 8:
@@ -243,7 +243,7 @@ class Simulator:
         val = (high << 8) | low
 
         if self.trace_hardware:
-            self.log_hardware("BUS", f"Dado {val:04X}h -> Barramento de Dados")
+            self.log_hardware("BUS", f"Dado [0x{val:04X}] ou {val} <- Barramento de Dados")
 
         return val
 
@@ -253,8 +253,8 @@ class Simulator:
         memlen = len(self.memory)
 
         if self.trace_hardware:
-            self.log_hardware("BUS", f"Endereço {address:05X}h -> Barramento de Endereços")
-            self.log_hardware("BUS", f"Dado {value:04X}h -> Barramento de Dados")
+            self.log_hardware("BUS", f"Endereço [0x{address:05X}] -> Barramento de Endereços")
+            self.log_hardware("BUS", f"Dado [0x{value:04X}] ou {value} -> Barramento de Dados")
             self.log_hardware("BUS", f"Sinal de Controle: MEMW (Escrever Memória)")
 
         if bits == 8:
@@ -394,22 +394,29 @@ class Simulator:
             raise ValueError(f"Operando '{operand}' inválido")
 
 
-    def _set_operand_value(self, operand, value, bits_hint=16):
+    def _set_operand_value(self, operand, value, bits_hint=16, segment='ds'):
         """
         Define valor em registrador ou destino de memória.
         Suporta addressing mode x86 via _decode_memory_address.
         """
-        if not isinstance(operand, str):
-            operand = str(operand)
+        #address = self.get_physical_address(segment, int(operand))
 
+        if not isinstance(operand, str): operand = str(operand)
         op = operand.strip().lower()
-
-        # Memória?
         addr = self._decode_memory_address(op)
+        
+        # Inserindo lógica para obter o endereço físico no log, caso seja memória.
         if addr is not None:
-            # escreve usando segmento padrão (DS) — chamadas de pilha devem especificar 'ss' quando necessário
-            self._write_memory(addr, value, bits_hint)
-            self.log_print(f"   [MEM] Escreveu {value:04X}h em DS:{addr:04X}h\n")
+            # Assumimos 'ds' por padrão para operações de memória que não são de pilha
+            segment = 'ds'
+            seg_val = self.cpu.get_reg(segment)
+            # Cálculo do endereço físico
+            physical_addr = (seg_val << 4) + addr
+            
+            self._write_memory(addr, value, bits_hint, segment)
+            
+            # Log formatado para mostrar DS:Offset e Endereço Físico (CORRIGIDO)
+            self.log_print(f"   [MEM] Escreveu [0x{value:04X}] ou {value} em {segment.upper()}:[0x{addr:04X}] (Físico: [0x{physical_addr:05X}])\n")
             return
 
         # registrador?
@@ -765,22 +772,38 @@ class Simulator:
         self.trace_hardware = True
         ip = self.cpu.get_reg('ip')
         cs = self.cpu.get_reg('cs')
-
         address = self.get_physical_address('cs', ip)
 
-        if address not in self.program:
-            return "END"
+        if address not in self.program: self.log_print("FIM DO PROGRAMA"); return "END"
+        
+        opcode, operands, _ = self.program[address]
+        
+        # 1. Busca Instrução (Opcode)
+        self.log_print(f"\n=== FETCH ===\n")
+        self.log_hardware("CPU", f"Endereço Físico {address:05X} -> Barramento de Endereços")
+        self.log_hardware("BUS", f"<- Barramento de Dados (Instrução: {opcode})")
+        
+        # 2. Busca Operandos 
+        for op in operands:
+            ip = (ip + 2) & 0xFFFF
+            self.cpu.set_reg('ip', ip)
+            self.log_hardware("CPU", f"IP Avançado +2 para {ip:04X}")
+  
+            self.log_print(f"--- BUSCA OPERANDS ---\n")
+            address = self.get_physical_address('cs', ip)
+                
+            self.log_hardware("CPU", f"Endereço Físico {address:05X} -> Barramento de Endereços")
+            self.log_hardware("BUS", f"<- Barramento de Dados (Operando: {op})")
 
-        opcode, operands, size = self.program[address]
-
-        self.cpu.set_reg('ip', (ip + size) & 0xFFFF)
-
+        self.log_print(f"\n=== EXECUTE ===\n")
+        self.log_print(f"\nExecutando: {opcode} {', '.join(operands)}\n==============================\n")
+        ip = (ip + 2) & 0xFFFF
+        self.cpu.set_reg('ip', ip)
         try:
-            self.log_print(f"[ADDR: {address:05X} | CS:IP {cs:04X}:{ip:04X}] Executando: {opcode} {', '.join(operands)} | ")
             self.execute_instruction(opcode, operands)
         except Exception as e:
-            return f"Erro ao executar: {e}"
-
+            self.log_print(f"Erro: {e}\n")
+            return "END"
         return "OK"
 
     def reset(self):
