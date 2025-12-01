@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from backend.Simulador import Simulator
+from Simulador import Simulator
 
 app = Flask(__name__)
 CORS(app)
